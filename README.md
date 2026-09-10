@@ -1,141 +1,127 @@
 # Hiver AI Customer Support Agent
 
-## Overview
+An evidence-first AI customer-support agent built for the Hiver SDE Intern take-home assignment.
 
-Evidence-first Python prototype for one support brand in Kaggle's Customer Support on Twitter data. It predicts a controlled intent, retrieves prior customer-to-agent resolutions, drafts from that evidence, and returns `AUTO_HANDLE` or `ESCALATE` with an explanation.
+The system uses historical customer-support conversations from Kaggle's **Customer Support on Twitter** dataset to:
 
-The primary user interface is a React + Vite dashboard in `frontend/`; the service is FastAPI in `backend/`. Legacy Streamlit files are retained only for optional local annotation/review.
+1. Classify an incoming customer message into a small, data-derived intent taxonomy.
+2. Retrieve historically similar customer-support cases.
+3. Draft a response grounded in how the brand historically handled similar issues.
+4. Decide whether the message should be automatically handled or escalated to a human.
+5. Provide the evidence and reasoning behind the decision.
 
-## Problem
+The project focuses on **grounded support automation rather than unconstrained chatbot generation**.
 
-Historical support replies are useful evidence, but not a policy source. The agent has no account, financial, ticketing, or other external side effects.
+---
 
-## Selected Brand
+## 1. Problem Statement
 
-Pending: no dataset is present. `scripts/prepare_data.py` writes the actual brand and observed statistics to `data/processed/selected_brand.json`, using customer volume, agent reply volume, and replied-conversation volume rather than popularity alone.
+Customer-support teams receive a large number of repetitive questions every day.
 
-## Dataset
+For many messages, the support team has already solved similar problems in the past. However, agents still need to manually:
 
-Place the downloaded Kaggle CSV in `data/raw/`. `--limit` creates a deterministic row-prefix sample. Cleaning preserves original text, normalizes timestamps, removes duplicate tweet IDs and empty text, and pairs direct outbound replies with inbound parents.
+- Understand what the customer is asking.
+- Search previous conversations.
+- Determine how similar cases were resolved.
+- Write an appropriate response.
+- Decide whether the issue can be safely handled automatically or should be escalated.
 
-## Architecture
+This project explores whether historical support conversations can be used to build an AI support agent that assists with these tasks while keeping an evidence trail.
 
-`prepare → conversation-ID split → intent classifier → semantic retrieval → escalation → grounded draft`. Golden conversation IDs are excluded from training and retrieval.
+---
 
-## Intent Taxonomy
+## 2. Selected Brand
 
-The supplied eight-intent YAML is review-required starter material, not claimed selected-brand research. Review it against actual samples and maintain definitions, inclusion/exclusion rules, and representative data examples before human annotation.
+The project uses:
 
-## Retrieval
+**AmazonHelp**
 
-Sentence Transformer embeddings with FAISS are preferred. A TF-IDF fallback supports offline inspection. Evidence contains historical customer text, response, similarity, and conversation ID.
+from Kaggle's:
 
-## Response Generation
+**Customer Support on Twitter**
 
-The offline draft reuses only the closest historical response. It does not invent policy, credits, refunds, URLs, timelines, or actions. The optional LLM rubric is separate from routing.
+dataset.
 
-## Escalation
+The brand was selected using a deterministic scoring rule based on the volume of outbound support activity and direct replies in the sampled dataset.
 
-Security/fraud/legal terms, low classifier confidence, and weak evidence escalate. Configure thresholds only using development data.
+The project does not assume that historical Twitter responses represent Amazon's current official support policy. Historical conversations are used as **evidence of past resolution patterns**, not as authoritative current policy.
 
-## Evaluation
+---
 
-`golden_set.csv` must contain 150–250 human-confirmed intent and escalation labels. `development_labels.csv` is independently human-labelled baseline training data. Evaluation refuses incomplete labels or conversation-ID overlap.
+## 3. Dataset
 
-## Baselines
+Source:
 
-Majority class, TF-IDF + Logistic Regression, and the AI agent run on the exact same golden IDs. Outputs include macro/per-intent metrics, matrices, agent predictions, escalation false negatives, plots, and pattern-selected failure examples.
+**Customer Support on Twitter**
 
-## Results
+Kaggle dataset:
 
-Pending real data and labels. No statistics, scores, agreement, or failures have been claimed.
+`thoughtvector/customer-support-on-twitter`
 
-## LLM-as-Judge
+The original dataset contains millions of tweets from customer-support conversations between customers and brands.
 
-Optional structured 1–5 ratings: correctness, grounding, helpfulness, brand appropriateness, safety, escalation appropriateness, and overall. It saves concise reasons only.
+For reproducibility and practical local development, this project uses a deterministic subset of the available CSV data rather than processing the entire dataset.
 
-## Human Agreement
+### Local dataset statistics
 
-After evaluation: `python scripts/create_human_judge_template.py`. Complete the 50 independent ratings, then calculate exact agreement, quadratic weighted kappa, and Spearman correlation.
+The preparation pipeline currently reads a deterministic prefix of:
 
-## Failure Analysis
+- Rows read: `500,000`
+- Chunk size: `100,000`
+- Random seed: `42`
+- Source file size: approximately `516 MB`
 
-The evaluator selects the five highest-frequency actual intent-confusion patterns and preserves representative IDs. It does not invent causes or examples.
+The selected brand is:
 
-## What Is Misleading About the Headline Number?
+`AmazonHelp`
 
-Accuracy can conceal class imbalance, unsafe escalation false negatives, manual-sample uncertainty, distribution shift, retrieval mismatch, and the difference between offline labels and customer satisfaction. Compare macro-F1 with the majority baseline; LLM-judge agreement is not customer impact.
+The resulting preparation pipeline identified:
 
-## Installation
+- Customer tweets: `39,299`
+- Support-agent tweets: `39,419`
+- Conversations: `39,299`
+- Conversations with an agent response: `39,299`
+- Usable resolved examples: `39,299`
 
-Python 3.11+ is required.
+The average and median conversation length in the selected examples are both approximately:
 
-```powershell
-cd D:\hiver-project\backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+`2 messages`
 
-cd D:\hiver-project\frontend
-npm install
-```
+The raw dataset is intentionally **not committed to GitHub** because of its size.
 
-## Environment Variables
+---
 
-Copy `.env.example` to `.env`. `OPENAI_API_KEY` is only required for LLM judging. `SUPPORT_BRAND` overrides automatic selection.
+## 4. Architecture
 
-## Reproducing Results
-
-After human review, this fixed-seed sample workflow targets under 15 minutes, excluding first model download:
-
-```powershell
-cd D:\hiver-project
-backend\.venv\Scripts\python.exe scripts\prepare_data.py --limit 250000 --golden-size 200
-backend\.venv\Scripts\python.exe scripts\discover_intents.py
-backend\.venv\Scripts\python.exe scripts\create_golden_template.py
-# Human review: golden_set.csv and development_labels.csv
-backend\.venv\Scripts\python.exe scripts\build_index.py
-backend\.venv\Scripts\python.exe scripts\run_evaluation.py
-backend\.venv\Scripts\python.exe scripts\plot_evaluation.py
-backend\.venv\Scripts\python.exe -m pytest -q
-```
-
-## Running the Agent
-
-`backend\.venv\Scripts\python.exe scripts\run_agent.py --text "My payment is failing"`
-
-## Running the Demo
-
-In one PowerShell terminal:
-
-```powershell
-cd D:\hiver-project\backend
-.\.venv\Scripts\Activate.ps1
-uvicorn app:app --reload --port 8001
-```
-
-In another:
-
-```powershell
-cd D:\hiver-project\frontend
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173`. The frontend calls `http://127.0.0.1:8001` by default; override it with `VITE_API_URL`. `GET /health`, `GET /api/info`, `POST /api/agent`, `POST /api/evaluate`, and `POST /api/golden` are available. Example:
-
-```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8001/api/agent -ContentType 'application/json' -Body '{"message":"I cannot access my account"}'
-```
-
-## Project Structure
-
-`src/` application; `scripts/` commands; `evaluation/` metrics/judge; `data/golden/` labels; `report/` take-home material.
-
-## Limitations
-
-No raw dataset, selected brand, manual labels, results, judge scores, or failure examples exist in this checkout. Direct reply pairing does not recover every multi-turn thread.
-
-## Future Work
-
-Conversation-aware reranking, threshold calibration, temporal evaluation, a larger independent human panel, and monitored feedback.
+```text
+                         ┌──────────────────────┐
+                         │     React + Vite      │
+                         │      Frontend        │
+                         └──────────┬───────────┘
+                                    │
+                                    │ HTTP
+                                    ▼
+                         ┌──────────────────────┐
+                         │       FastAPI        │
+                         │       Backend        │
+                         └──────────┬───────────┘
+                                    │
+                     ┌──────────────┼──────────────┐
+                     │              │              │
+                     ▼              ▼              ▼
+                Intent Model    Retriever      Decision Logic
+                     │              │              │
+                     │              ▼              │
+                     │       FAISS Index           │
+                     │              │              │
+                     │              ▼              │
+                     │     Historical Support      │
+                     │       Conversations         │
+                     │                             │
+                     └──────────────┬──────────────┘
+                                    │
+                                    ▼
+                           Grounded Reply Draft
+                                    │
+                                    ▼
+                         AUTO_HANDLE / ESCALATE
