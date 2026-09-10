@@ -1,0 +1,4 @@
+tweet_id,author_id,inbound,created_at,text,in_response_to_tweet_id
+1,u,True,2020-01-01,help,
+2,brand,False,2020-01-01,reply,1.0
+2,brand,False,2020-01-01,duplicate,1.0
